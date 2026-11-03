@@ -1,0 +1,15 @@
+services:
+  php-api:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+
+    container_name: truck-routing-api
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - .:/app
+
+    restart: unless-stopped
