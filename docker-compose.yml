@@ -3,13 +3,21 @@ services:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
-
     container_name: truck-routing-api
-
     ports:
       - "8000:8000"
-
     volumes:
       - .:/app
-
+    restart: unless-stopped
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: truck_routing_valhalla
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./docker/valhalla/custom_files:/custom_files
+    environment:
+      - build_elevation=False
+      - build_admins=True
+      - serve_tiles=True
     restart: unless-stopped
