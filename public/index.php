@@ -1,5 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
+use App\Controllers\RouteController;
+use Dotenv\Dotenv;
+
+require_once __DIR__ . '/../vendor/autoload.php';
+
+if(file_exists(__DIR__ . '/../.env')){
+    $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
+    $dotenv->load();
+}
+
 header("Content-Type: application/json");
 
 $method = $_SERVER["REQUEST_METHOD"];
@@ -13,6 +25,13 @@ if($method === "GET" && $uri === "/api/health"){
         "message" => "API is working!",
         "version" => "1.0.0"
     ], JSON_PRETTY_PRINT);
+
+    exit;
+}
+
+if($method === "POST" && $uri === "/api/routes"){
+    $controller = new RouteController();
+    $controller->handle();
 
     exit;
 }

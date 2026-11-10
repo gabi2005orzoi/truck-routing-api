@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Truck Routing - Cluj Napoca</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Rute Camioane Cluj</h2>
+    <div class="subtitle">Evitare străzi înguste & calcul rute alternative conforme</div>
+
+    <!-- Punct Pornire -->
+    <div class="section-box">
+        <div class="section-title">
+            <span>Punct Pornire (Start)</span>
+            <button id="btnPickStart" class="btn-pick" onclick="setPickMode('start')">Alege pe hartă</button>
+        </div>
+        <div class="search-wrapper">
+            <input type="text" id="startSearch" class="search-input" placeholder="Caută stradă (ex: Calea Turzii)..." autocomplete="off">
+            <div id="startSuggestions" class="suggestions-dropdown"></div>
+        </div>
+        <div class="coords-row">
+            <input type="number" step="any" id="startLat" value="46.7640" title="Latitudine Start" onchange="manualCoordChange()">
+            <input type="number" step="any" id="startLon" value="23.5990" title="Longitudine Start" onchange="manualCoordChange()">
+        </div>
+    </div>
+
+    <!-- Punct Destinație -->
+    <div class="section-box">
+        <div class="section-title">
+            <span>Punct Destinatie (Sosire)</span>
+            <button id="btnPickEnd" class="btn-pick" onclick="setPickMode('end')">Alege pe hartă</button>
+        </div>
+        <div class="search-wrapper">
+            <input type="text" id="endSearch" class="search-input" placeholder="Caută stradă (ex: B-dul Muncii)..." autocomplete="off">
+            <div id="endSuggestions" class="suggestions-dropdown"></div>
+        </div>
+        <div class="coords-row">
+            <input type="number" step="any" id="endLat" value="46.7934" title="Latitudine Destinație" onchange="manualCoordChange()">
+            <input type="number" step="any" id="endLon" value="23.6192" title="Longitudine Destinație" onchange="manualCoordChange()">
+        </div>
+    </div>
+
+    <!-- Parametri Gabarit Camion -->
+    <div class="section-box">
+        <div class="section-title">Gabarit Camion &amp; Filtru Acces</div>
+        <div class="row">
+            <div class="form-group">
+                <label>Greutate (t)</label>
+                <input type="number" step="0.5" id="weight" value="12.0" onchange="calculateRoute()">
+            </div>
+            <div class="form-group">
+                <label>Înălțime (m)</label>
+                <input type="number" step="0.1" id="height" value="4.0" onchange="calculateRoute()">
+            </div>
+            <div class="form-group">
+                <label>Lățime (m)</label>
+                <input type="number" step="0.1" id="width" value="2.5" onchange="calculateRoute()">
+            </div>
+        </div>
+        <div class="form-group" style="margin-top: 4px;">
+            <label>Acces max. străzi secundare (m)</label>
+            <input type="number" step="100" id="maxAccess" value="1500" title="Distanța maximă continuă permisă la capete pe străzi rezidențiale/secundare" onchange="calculateRoute()">
+        </div>
+    </div>
+
+    <!-- Exemple rapide -->
+    <div>
+        <label>Exemple rapide:</label>
+        <div class="preset-container" style="margin-top: 4px;">
+            <button class="preset-btn" onclick="setPreset('turzii')">Calea Turzii - Muncii</button>
+            <button class="preset-btn" onclick="setPreset('manastur')">Mănăștur - Mărăști</button>
+        </div>
+    </div>
+
+    <button class="primary-btn" onclick="calculateRoute()">Recalculează Rute</button>
+
+    <!-- Rezultate -->
+    <div id="routeResults" class="results" style="display: none;"></div>
+
+    <!-- Legendă -->
+    <div class="legend">
+        <strong>Legendă:</strong>
+        <div class="legend-item"><div class="color-box" style="background: #0066ff;"></div> <span>Ruta Principală (Albastru continuu)</span></div>
+        <div class="legend-item"><div class="color-box" style="background: #16a34a;"></div> <span>Alternativa 1 (Verde punctat)</span></div>
+        <div class="legend-item"><div class="color-box" style="background: #ea580c;"></div> <span>Alternativa 2 (Portocaliu punctat)</span></div>
+        <div class="legend-item"><div class="color-box" style="background: rgba(220, 38, 38, 0.4); border: 1px solid #dc2626;"></div> <span>Zonă Restricționată (Centru Cluj)</span></div>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // 1. Inițializare Hartă
+    const map = L.map('map').setView([46.7712, 23.6000], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    window.addEventListener('load', () => {
+        setTimeout(() => map.invalidateSize(), 150);
+    });
+
+    let routeLayers = [];
+    let startMarker = null;
+    let endMarker = null;
+    let activePickMode = null; // 'start', 'end', sau null
+
+    // 2. Pictograme personalizate pentru Markeri Draggable
+    const iconStart = L.divIcon({
+        className: 'custom-pin-wrapper',
+        html: '<div class="custom-pin pin-start"><span class="pin-label">A</span></div>',
+        iconSize: [30, 42],
+        iconAnchor: [15, 38]
+    });
+
+    const iconEnd = L.divIcon({
+        className: 'custom-pin-wrapper',
+        html: '<div class="custom-pin pin-end"><span class="pin-label">B</span></div>',
+        iconSize: [30, 42],
+        iconAnchor: [15, 38]
+    });
+
+    // 3. Poligon restricționat în Centrul Clujului (din restricted_roads.json)
+    const restrictedArea = [
+        [46.7730, 23.5850],
+        [46.7730, 23.5960],
+        [46.7660, 23.5960],
+        [46.7660, 23.5850]
+    ];
+    L.polygon(restrictedArea, {
+        color: '#dc2626',
+        fillColor: '#ef4444',
+        fillOpacity: 0.35,
+        weight: 2
+    }).addTo(map).bindPopup("<b>Zonă Restricționată:</b><br>Centrul Clujului (Evitat de camioane)");
+
+    // 4. Decodor Polyline6 (factor 1e6 conform Valhalla)
+    function decodePolyline6(str) {
+        let index = 0, len = str.length;
+        let lat = 0, lng = 0;
+        const coordinates = [];
+        const factor = 1e6;
+
+        while (index < len) {
+            let b, shift = 0, result = 0;
+            do {
+                b = str.charCodeAt(index++) - 63;
+                result |= (b & 0x1f) << shift;
+                shift += 5;
+            } while (b >= 0x20);
+            const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+            lat += dlat;
+
+            shift = 0;
+            result = 0;
+            do {
+                b = str.charCodeAt(index++) - 63;
+                result |= (b & 0x1f) << shift;
+                shift += 5;
+            } while (b >= 0x20);
+            const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+            lng += dlng;
+
+            coordinates.push([lat / factor, lng / factor]);
+        }
+        return coordinates;
+    }
+
+    // 5. Creare sau actualizare markeri Start și Sosire (Draggable)
+    function updateMarkers(startLatLng, endLatLng) {
+        if (!startMarker) {
+            startMarker = L.marker(startLatLng, { icon: iconStart, draggable: true }).addTo(map);
+            startMarker.bindPopup("<b>Punct Pornire (A)</b><br>Trage markerul pentru a recalcula ruta.");
+            startMarker.on('dragend', function(e) {
+                const pos = e.target.getLatLng();
+                document.getElementById('startLat').value = pos.lat.toFixed(5);
+                document.getElementById('startLon').value = pos.lng.toFixed(5);
+                calculateRoute();
+            });
+        } else {
+            startMarker.setLatLng(startLatLng);
+        }
+
+        if (!endMarker) {
+            endMarker = L.marker(endLatLng, { icon: iconEnd, draggable: true }).addTo(map);
+            endMarker.bindPopup("<b>Punct Destinație (B)</b><br>Trage markerul pentru a recalcula ruta.");
+            endMarker.on('dragend', function(e) {
+                const pos = e.target.getLatLng();
+                document.getElementById('endLat').value = pos.lat.toFixed(5);
+                document.getElementById('endLon').value = pos.lng.toFixed(5);
+                calculateRoute();
+            });
+        } else {
+            endMarker.setLatLng(endLatLng);
+        }
+    }
+
+    // 6. Gestionare mod "Alege pe hartă"
+    function setPickMode(mode) {
+        const btnStart = document.getElementById('btnPickStart');
+        const btnEnd = document.getElementById('btnPickEnd');
+
+        if (activePickMode === mode) {
+            activePickMode = null;
+            btnStart.classList.remove('active');
+            btnEnd.classList.remove('active');
+            map.getContainer().style.cursor = '';
+            return;
+        }
+
+        activePickMode = mode;
+        btnStart.classList.toggle('active', mode === 'start');
+        btnEnd.classList.toggle('active', mode === 'end');
+        map.getContainer().style.cursor = 'crosshair';
+    }
+
+    // Click pe hartă
+    map.on('click', function(e) {
+        const lat = e.latlng.lat.toFixed(5);
+        const lon = e.latlng.lng.toFixed(5);
+
+        if (activePickMode === 'start') {
+            document.getElementById('startLat').value = lat;
+            document.getElementById('startLon').value = lon;
+            document.getElementById('startSearch').value = `Selectat pe hartă (${lat}, ${lon})`;
+            setPickMode(null);
+            calculateRoute();
+        } else if (activePickMode === 'end') {
+            document.getElementById('endLat').value = lat;
+            document.getElementById('endLon').value = lon;
+            document.getElementById('endSearch').value = `Selectat pe hartă (${lat}, ${lon})`;
+            setPickMode(null);
+            calculateRoute();
+        } else {
+            const popupContent = `
+                <div style="font-size:0.85rem; display:flex; flex-direction:column; gap:5px;">
+                    <strong>Setează acest punct:</strong>
+                    <button style="padding:4px 8px; cursor:pointer;" onclick="setPointFromMap('start', ${lat}, ${lon})">Seteaza ca Start</button>
+                    <button style="padding:4px 8px; cursor:pointer;" onclick="setPointFromMap('end', ${lat}, ${lon})">Seteaza ca Destinatie</button>
+                </div>
+            `;
+            L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
+        }
+    });
+
+    window.setPointFromMap = function(type, lat, lon) {
+        map.closePopup();
+        if (type === 'start') {
+            document.getElementById('startLat').value = lat;
+            document.getElementById('startLon').value = lon;
+            document.getElementById('startSearch').value = `Selectat pe hartă (${lat}, ${lon})`;
+        } else {
+            document.getElementById('endLat').value = lat;
+            document.getElementById('endLon').value = lon;
+            document.getElementById('endSearch').value = `Selectat pe hartă (${lat}, ${lon})`;
+        }
+        calculateRoute();
+    };
+
+    function manualCoordChange() {
+        calculateRoute();
+    }
+
+    // 7. Căutare Adrese prin OpenStreetMap Nominatim
+    function setupSearch(inputId, dropdownId, latId, lonId) {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+        let debounceTimer;
+
+        input.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            const query = input.value.trim();
+            if (query.length < 3) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            debounceTimer = setTimeout(async () => {
+                try {
+                    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Cluj-Napoca')}&addressdetails=1&limit=5&countrycodes=ro`;
+                    const res = await fetch(url, { headers: { 'Accept-Language': 'ro' } });
+                    const results = await res.json();
+
+                    if (!results || results.length === 0) {
+                        dropdown.innerHTML = '<div class="suggestion-item" style="color:#888;">Niciun rezultat găsit</div>';
+                        dropdown.style.display = 'block';
+                        return;
+                    }
+
+                    dropdown.innerHTML = '';
+                    results.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.textContent = item.display_name.split(',').slice(0, 3).join(',');
+                        div.addEventListener('click', () => {
+                            input.value = div.textContent;
+                            document.getElementById(latId).value = parseFloat(item.lat).toFixed(5);
+                            document.getElementById(lonId).value = parseFloat(item.lon).toFixed(5);
+                            dropdown.style.display = 'none';
+                            calculateRoute();
+                        });
+                        dropdown.appendChild(div);
+                    });
+                    dropdown.style.display = 'block';
+                } catch (e) {
+                    console.error("Eroare căutare Nominatim:", e);
+                }
+            }, 300);
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
+    setupSearch('startSearch', 'startSuggestions', 'startLat', 'startLon');
+    setupSearch('endSearch', 'endSuggestions', 'endLat', 'endLon');
+
+    // 8. Preseturi rapide
+    function setPreset(type) {
+        if (type === 'turzii') {
+            document.getElementById('startLat').value = 46.7640;
+            document.getElementById('startLon').value = 23.5990;
+            document.getElementById('startSearch').value = "Calea Turzii 10, Cluj-Napoca";
+            document.getElementById('endLat').value = 46.7934;
+            document.getElementById('endLon').value = 23.6192;
+            document.getElementById('endSearch').value = "Bulevardul Muncii 10, Cluj-Napoca";
+        } else if (type === 'manastur') {
+            document.getElementById('startLat').value = 46.7570;
+            document.getElementById('startLon').value = 23.5550;
+            document.getElementById('startSearch').value = "Mănăștur (Calea Florești)";
+            document.getElementById('endLat').value = 46.7790;
+            document.getElementById('endLon').value = 23.6200;
+            document.getElementById('endSearch').value = "Mărăști (Strada Aurel Vlaicu)";
+        }
+        calculateRoute();
+    }
+
+    // 9. Calculare Rută și Desenare pe Hartă
+    async function calculateRoute() {
+        // Curățare rute anterioare de pe hartă
+        routeLayers.forEach(l => map.removeLayer(l));
+        routeLayers = [];
+
+        const startLat = parseFloat(document.getElementById('startLat').value);
+        const startLon = parseFloat(document.getElementById('startLon').value);
+        const endLat = parseFloat(document.getElementById('endLat').value);
+        const endLon = parseFloat(document.getElementById('endLon').value);
+
+        if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
+            return;
+        }
+
+        updateMarkers([startLat, startLon], [endLat, endLon]);
+
+        const maxAccessM = parseFloat(document.getElementById('maxAccess').value);
+
+        const payload = {
+            start: { lat: startLat, lon: startLon },
+            end: {
+                lat: endLat,
+                lon: endLon,
+                max_access_m: !isNaN(maxAccessM) ? maxAccessM : 1500
+            },
+            truck: {
+                weight: parseFloat(document.getElementById('weight').value) || 12.0,
+                height: parseFloat(document.getElementById('height').value) || 4.0,
+                width: parseFloat(document.getElementById('width').value) || 2.5
+            }
+        };
+
+        const resultsDiv = document.getElementById('routeResults');
+        resultsDiv.className = "results loading";
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = "Se calculeaza rutele pentru camioane (cu verificare restrictii si strazi inguste)...";
+
+        try {
+            const res = await fetch('/api/routes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!data.success) {
+                resultsDiv.className = "results error";
+                resultsDiv.innerHTML = (data.message || 'Eroare la calcularea rutei');
+                return;
+            }
+
+            const routes = data.data?.routes || [];
+            if (routes.length === 0) {
+                resultsDiv.className = "results error";
+                resultsDiv.innerHTML = "Nu a fost gasita nicio ruta conforma fara incalcarea strazilor restrictionate.";
+                return;
+            }
+
+            const altColors = ['#16a34a', '#ea580c', '#8b5cf6'];
+            let htmlResults = `<b>Rute valide găsite:</b> ${routes.length}<br><br>`;
+
+            // 1. Desenăm alternativele mai întâi (în fundal, de la ultima la prima)
+            for (let i = routes.length - 1; i >= 1; i--) {
+                const altTrip = routes[i];
+                const altCoords = decodePolyline6(altTrip.legs[0].shape);
+                const color = altColors[(i - 1) % altColors.length];
+                const altLine = L.polyline(altCoords, {
+                    color: color,
+                    weight: 5,
+                    opacity: 0.85,
+                    dashArray: '8, 8'
+                }).addTo(map).bindPopup(
+                    `<b>Alternativa ${i}:</b><br>` +
+                    `Distanță: ${(altTrip.summary.length).toFixed(2)} km<br>` +
+                    `Timp: ${Math.round(altTrip.summary.time / 60)} min`
+                );
+                routeLayers.push(altLine);
+            }
+
+            // 2. Desenăm ruta principală (routes[0]) deasupra
+            const mainTrip = routes[0];
+            const mainCoords = decodePolyline6(mainTrip.legs[0].shape);
+            const mainLine = L.polyline(mainCoords, {
+                color: '#0066ff',
+                weight: 6,
+                opacity: 0.95
+            }).addTo(map).bindPopup(
+                `<b>Ruta Principală (Recomandată):</b><br>` +
+                `Distanță: ${(mainTrip.summary.length).toFixed(2)} km<br>` +
+                `Timp: ${Math.round(mainTrip.summary.time / 60)} min`
+            );
+            routeLayers.push(mainLine);
+
+            // 3. Generare sumar text în panou
+            htmlResults += `<b>Ruta Principală:</b> ${(mainTrip.summary.length).toFixed(2)} km, ${Math.round(mainTrip.summary.time / 60)} min<br>`;
+            for (let i = 1; i < routes.length; i++) {
+                const altTrip = routes[i];
+                htmlResults += `<b>Alternativa ${i}:</b> ${(altTrip.summary.length).toFixed(2)} km, ${Math.round(altTrip.summary.time / 60)} min<br>`;
+            }
+
+            if (routes.length === 1) {
+                htmlResults += `<span style="font-size:0.75rem; color:#64748b; display:block; margin-top:5px;"><i>Nicio altă rută alternativă nu respectă restricțiile pentru gabaritul ales.</i></span>`;
+            }
+
+            // Centrare hartă pe ruta principală
+            map.fitBounds(mainLine.getBounds(), { padding: [40, 40] });
+
+            resultsDiv.className = "results";
+            resultsDiv.innerHTML = htmlResults;
+
+        } catch (err) {
+            resultsDiv.className = "results error";
+            resultsDiv.innerHTML = "Eroare retea / server: " + err.message;
+        }
+    }
+
+    // Calcul automat inițial
+    calculateRoute();
+</script>
+
+</body>
+</html>
