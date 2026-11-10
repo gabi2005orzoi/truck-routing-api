@@ -1,0 +1,13 @@
+[
+    {
+        "id": "restrictie-centru-cluj",
+        "description": "Zona centrala Cluj-Napoca (Piata Unirii - Memorandumului - 21 Decembrie)",
+        "type": "polygon",
+        "polygon": [
+            {"lat": 46.7730, "lon": 23.5850},
+            {"lat": 46.7730, "lon": 23.5960},
+            {"lat": 46.7660, "lon": 23.5960},
+            {"lat": 46.7660, "lon": 23.5850}
+        ]
+    }
+]
