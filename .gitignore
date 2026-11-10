@@ -1,0 +1,50 @@
+# ============================================================
+# DEPENDENTE PHP
+# ============================================================
+# Folderul vendor se regenereaza cu "composer install"
+/vendor/
+
+# ============================================================
+# VARIABILE DE MEDIU
+# ============================================================
+# Fisierul .env contine configuratii locale si date sensibile.
+# Pe GitHub se pune doar .env.example (un template gol).
+.env
+
+# ============================================================
+# DATE VALHALLA GENERATE / BINARE
+# ============================================================
+# Fisierele de mai jos sunt generate automat de Valhalla la prima pornire
+# sau sunt date cartografice mari - nu apartin in repository.
+
+# Datele OSM brute (harta regionala, fisier mare ~7 MB)
+docker/valhalla/custom_files/*.pbf
+
+# Arhiva cu tile-urile de rutare (generata de Valhalla)
+docker/valhalla/custom_files/*.tar
+
+# Tile-urile de rutare propriu-zise (fisiere .gph generate)
+docker/valhalla/custom_files/valhalla_tiles/
+
+# Baza de date administrativa SQLite (generata de Valhalla)
+docker/valhalla/custom_files/admin_data/
+
+# Fisiere de stare generate de Valhalla
+docker/valhalla/custom_files/duplicateways.txt
+docker/valhalla/custom_files/file_hashes.txt
+
+# ============================================================
+# SISTEM DE OPERARE
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# IDE / EDITOARE
+# ============================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+

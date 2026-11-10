@@ -1,0 +1,15 @@
+{
+    "name": "cityhall/truck-routing-api",
+    "description": "Truck routing API",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "require": {
+        "php": "^8.3",
+        "guzzlehttp/guzzle": "^8.3",
+        "vlucas/phpdotenv": "^5.8"
+    }
+}
